@@ -1,0 +1,5 @@
+# Only needed for video.py's extract_landmarks (M2). Everything else in
+# this repo -- kinematics.py, landmarks.py, synth.py, and the test suite --
+# imports neither of these.
+mediapipe>=0.10
+opencv-python>=4.9

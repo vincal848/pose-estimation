@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# No video files or captures committed to this repo.
+data/
+*.mp4
+*.mov

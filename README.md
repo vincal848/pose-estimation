@@ -1,6 +1,6 @@
 # Running-Form Analysis from Phone Video
 
-[![tests](https://github.com/vincal848/pose_estimation/actions/workflows/tests.yml/badge.svg)](https://github.com/vincal848/pose_estimation/actions/workflows/tests.yml)
+[![tests](https://github.com/vincal848/pose-estimation/actions/workflows/tests.yml/badge.svg)](https://github.com/vincal848/pose-estimation/actions/workflows/tests.yml)
 
 I want to point a phone at myself on a treadmill or a track and get real
 gait numbers out of it -- cadence, ground contact time, vertical

@@ -135,7 +135,7 @@ oscillation not independently validated.
 
 ## First real-video result
 
-One clip, one run, no tuning on a held-out clip -- read it as a smoke test
+One clip, one run, parameters tuned on this same clip -- read it as a smoke test
 of the pipeline, not a validation study. Video: Arellano et al. 2015, PLOS
 ONE S1 video, treadmill side view at 3.0 m/s, CC BY 4.0 (see `CREDITS.md`).
 854x480, **29.97 fps**, 299 frames (10 s); MediaPipe `pose_landmarker_full`.

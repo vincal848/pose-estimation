@@ -188,6 +188,19 @@ How each was run and what went wrong:
   (legs below the knee only, no hips), a pole-vault athlete video, and a
   park-path video from a moving cyclist.
 
+## Input requirements
+
+The pipeline's documented operating conditions. They were written down
+before searching for the next held-out clip and are not tuned to any
+result; a clip outside them is not a test of the pipeline.
+
+- Side view: camera roughly perpendicular to the running direction.
+- Whole body visible, including both ankles, for the whole analysed stretch.
+- Runner at least ~400 px tall in the frame.
+- At least 4 s of steady running in frame.
+- At least 25 fps (60+ for any contact-time claim).
+- A single runner, or one clearly dominant (large, central) person.
+
 ## Running on a video
 
 ```bash

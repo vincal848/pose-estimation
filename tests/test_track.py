@@ -21,21 +21,28 @@ def runner():
     return make_synthetic_gait(cadence_spm=170.0, contact_time_s=0.25, fps=FPS, seconds=6)[0]
 
 
+ENTERS = 10  # the runner walks into shot after the bystander is already there
+
+
 def _scene(runner, bystander_first):
     still = runner[0].copy()
     still[:, 0] += 400.0  # stands 400 px away; ankles never move
-    return [[still, r] if bystander_first else [r, still] for r in runner]
+    scene = [[still, r] if bystander_first else [r, still] for r in runner]
+    for i in range(ENTERS):
+        scene[i] = [still]  # so the bystander's track is always track 0
+    return scene
 
 
 @pytest.mark.parametrize("bystander_first", [True, False])
 def test_picks_the_runner_not_the_still_bystander(runner, bystander_first):
     out = select_runner(_scene(runner, bystander_first), FPS)
-    assert np.array_equal(out, runner)
+    assert np.isnan(out[:ENTERS, :, :2]).all()
+    assert np.array_equal(out[ENTERS:], runner[ENTERS:])
 
 
 def test_roi_overrides_the_automatic_pick(runner):
     out = select_runner(_scene(runner, True), FPS, roi=(700, 0, 1000, 600))
-    assert np.allclose(joint_xy(out, "left_hip")[:, 0], runner[0, 23, 0] + 400.0)
+    assert np.allclose(joint_xy(out, "left_hip")[:, 0], runner[0, 23, 0] + 400.0)  # the bystander, as asked
 
 
 def test_runner_frames_the_detector_missed_come_back_nan(runner):

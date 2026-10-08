@@ -201,6 +201,22 @@ result; a clip outside them is not a test of the pipeline.
 - At least 25 fps (60+ for any contact-time claim).
 - A single runner, or one clearly dominant (large, central) person.
 
+**Held-out status.** No clip meeting these requirements was found, so there
+is no held-out result and none is claimed. Searched (metadata, thumbnails
+and first frames only; the pipeline was not run on any of them): Wikimedia
+Commons search and the running/jogging video categories, and Internet
+Archive search for openly licensed running video. Pexels and Pixabay could
+not be searched (automated access is blocked by a bot check), so they are
+unexamined, not ruled out. What turned up fails the requirements: the Arakawa jog
+(runner far too small and visible ~1 s), `Running form.ogv` (legs below the
+knee only), 320x240 coaching clips (runner far under 400 px), a CC0 Science
+Nation news segment on gait retraining (cut compilation, 640x360, no 4 s
+steady full-body side view), and the rest are scientific videos of animals
+or other subjects. The remaining Wikimedia running videos are the paper's
+own s003/s005 treadmill clips, already used for tuning and development. A
+real held-out test needs a clip contributed or filmed to the requirements
+above (a phone clip of a runner at 60 fps from the side would do).
+
 ## Running on a video
 
 ```bash

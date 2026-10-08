@@ -10,11 +10,11 @@ pose estimator can see the thing directly: where the heel is, where the
 hip is, frame by frame. The watch has to guess all of that from a wrist
 accelerometer.
 
-Today the metric math is tested on synthetic landmark sequences with an
-exact, known answer, and the video path (video -> landmarks -> report) is
-built and tested end to end with a stand-in pose detector. What has *not*
-happened: no real footage and no real MediaPipe model have been run
-through it yet, so none of the numbers below describe real runners.
+The metric math is tested on synthetic landmark sequences with an exact,
+known answer, and the video path (video -> landmarks -> report) is tested
+end to end with a stand-in pose detector and has been run once on a real
+public treadmill clip (see "First real-video result"). The synthetic table
+in Validation below is not real-runner data.
 
 ## Method
 
@@ -25,8 +25,8 @@ video -> landmarks per frame -> smoothing -> gait event detection -> metrics
 1. **Video -> landmarks.** MediaPipe Pose (BlazePose), 33 keypoints per
    frame, run on a side-view clip. Output: an `(frames, 33, 3)` array of
    `(x_px, y_px, visibility)`; frames with no detection are NaN with
-   visibility 0. Built in `video.py` (M2), but only the plumbing is
-   exercised by tests -- the MediaPipe call itself has not been run.
+   visibility 0. Built in `video.py` (M2); tests cover the plumbing, and the
+   MediaPipe call has run once on a real clip.
 2. **Smoothing.** Savitzky-Golay or a One Euro Filter, both parameterized
    in seconds rather than frames so they scale with the video's fps. The
    One Euro Filter's adaptive cutoff matters for event timing specifically:
@@ -58,7 +58,7 @@ seconds apart, not from one short phase's duration.
 
 ## Validation
 
-Planned, once there is real video (M3/M4):
+Real-video checks (M3/M4), first pass done on one clip:
 
 - **Cadence vs. a hand count** of foot strikes in a public clip (no
   watch reference for public footage). Target: within 2 spm.
@@ -108,12 +108,11 @@ above (those will shift slightly with any threshold tuning).
       `kinematics.py`, `landmarks.py`, `synth.py`, tested without any
       video or model.
 - [x] **M2** -- MediaPipe wrapper (`video.py`) + landmark export to disk.
-      Code and plumbing tests done; the MediaPipe call is unrun until a
-      model file and a real clip are in hand.
-- [ ] **M3** -- Event detection validated on real video, not just synthetic
-      data.
-- [ ] **M4** -- Cadence validated against a hand-counted reference on a
-      public clip (no GPS watch reading available).
+      Run on one real clip.
+- [~] **M3** -- Event detection checked on one real clip against a hand
+      count of strikes (cadence agrees); contact time not validated.
+- [~] **M4** -- Cadence agrees with a hand count on one public clip (163 vs
+      163 spm); a single clip, not N runs.
 - [ ] **M5** -- A per-run report: the metrics above, with the figures that
       back them up.
 
@@ -126,12 +125,46 @@ above (those will shift slightly with any threshold tuning).
 
 ## Status
 
-M1 done. M2 code done, MediaPipe call itself unverified. The pipeline
+M1 and M2 done; the MediaPipe call has run on one real clip. The pipeline
 `cli.py` (video -> landmarks -> report) runs end to end in tests on
 synthetic landmarks, including dropped and low-confidence frames. M3 and M4
-need a real clip; the plan is an openly licensed public video, so there is
-no smartwatch cadence comparison -- M4 becomes "cadence agrees with a hand
-count of strikes in the clip."
+are partial: one public clip, cadence checked against a hand count (no
+smartwatch reference exists for public footage), contact time and
+oscillation not independently validated.
+
+## First real-video result
+
+One clip, one run, no tuning on a held-out clip -- read it as a smoke test
+of the pipeline, not a validation study. Video: Arellano et al. 2015, PLOS
+ONE S1 video, treadmill side view at 3.0 m/s, CC BY 4.0 (see `CREDITS.md`).
+854x480, **29.97 fps**, 299 frames (10 s); MediaPipe `pose_landmarker_full`.
+Only the legs and lower hips are in frame, and a foreground object hides
+the far leg for much of the clip.
+
+| metric | pipeline | hand check |
+|---|---|---|
+| cadence | 162.9 spm (whole clip) | 15 landings by eye in frames 21-175, 14 steps in 154 frames = 163.4 spm |
+| strikes, same window | 8 near-foot strikes (frames 23-177), x2 for both feet = 15 landings | 15 landings |
+| ground contact time | 0.200 s (6 frames) | stance looks like ~8 frames (~0.27 s) by eye |
+| vertical oscillation | 18.8 px (no metre scale: runner height unknown) | not checked |
+| overstride / trunk lean | +9.7 px / 8.3 deg with `--facing left` | not checked |
+
+Sanity: 3.0 m/s at 163 spm is a 1.10 m step, in the usual range for
+recreational running.
+
+Caveats, plainly: (1) at 30 fps one frame is 33 ms, so contact time is good
+to about +-1 frame and I would not trust it; cadence is fine. (2) The
+heel-based contact time is shorter than the visible stance because the heel
+leaves the belt before the toe does. (3) The hand count is mine, from
+stepped frames, with a +-1 frame landing judgement -- about +-2.6 spm over
+that window. (4) The far foot's heel track was junk (the hidden leg) while
+its visibility score stayed high, so the report takes cadence and contact
+time from whichever foot has the most regular strikes. (5) The runner faces
+left; `--facing left` is needed for the overstride and lean signs.
+
+Bugs found by this run and fixed with tests: median step interval quantised
+cadence to whole frames; a tight velocity gate kept only the middle of each
+real, rounded contact; a junk far-foot track corrupted merged cadence.
 
 ## Running on a video
 
@@ -139,7 +172,8 @@ count of strikes in the clip."
 pip install -r requirements-dev.txt -r requirements-video.txt
 # current mediapipe only has the Tasks API: it needs a pose_landmarker
 # .task model file (Google publishes pose_landmarker_{lite,full,heavy}).
-# It is not bundled or downloaded by this repo; keep it outside git.
+# python scripts/fetch_video.py fetches it (and the clip below) into data/,
+# checksum-verified; nothing is committed.
 python cli.py clip.mp4 --model pose_landmarker_full.task     --save-landmarks clip.npz --m-per-px 0.002 --facing right
 python cli.py clip.npz        # re-analyse saved landmarks, no model needed
 ```
@@ -167,7 +201,7 @@ k.cadence_spm(strikes) * 2   # both-feet cadence from one tracked foot
 ```
 
 ```bash
-pytest tests -q   # 61 tests
+pytest tests -q   # 65 tests
 ```
 
 ## Repository guide
@@ -177,10 +211,11 @@ pytest tests -q   # 61 tests
 | `landmarks.py` | MediaPipe's 33-point layout, joint lookup, pixel-to-metre scale |
 | `kinematics.py` | Smoothing, gait event detection, every gait metric |
 | `synth.py` | Synthetic landmark arrays with known, exact gait events |
+| `scripts/fetch_video.py` | Checksum-verified download of the clip and model into `data/`; licences in `CREDITS.md` |
 | `video.py` | Frame reading, detector seam, MediaPipe PoseLandmarker adapter, `.npz` export |
 | `analyze.py` | Pure landmarks -> metrics report; gap interpolation, low-confidence handling |
 | `cli.py` | `python cli.py video-or-npz` -> printed report |
-| `tests/` | 61 tests, synthetic data only, no network, no model downloads |
+| `tests/` | 65 tests, synthetic data only, no network, no model downloads |
 | `docs/DESIGN.md` | Landmark indices used, event-detection logic, metric formulas |
 
 ## Future interests

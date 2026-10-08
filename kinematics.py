@@ -236,3 +236,21 @@ def trunk_lean(shoulder, hip):
     dx = shoulder[..., 0] - hip[..., 0]
     dy = shoulder[..., 1] - hip[..., 1]  # negative when shoulder is above the hip
     return np.degrees(np.arctan2(dx, -dy))
+
+
+def knee_flexion(hip, knee, ankle):
+    """Knee flexion in degrees: 0 for a straight leg, growing as it bends.
+    The supplement of the hip-knee-ankle interior angle (joint_angle)."""
+    return 180.0 - joint_angle(hip, knee, ankle)
+
+
+def knee_flexion_per_stride(flexion, strike_indices):
+    """(flexion at each strike, peak flexion between each strike and the
+    next). flexion is a per-frame series; strike_indices are frame indices.
+    The last strike has no following strike, so peak has one fewer entry.
+    """
+    flexion = np.asarray(flexion, dtype=float)
+    idx = np.asarray(strike_indices, dtype=int)
+    at_strike = flexion[idx]
+    peak = np.array([flexion[a:b].max() for a, b in zip(idx[:-1], idx[1:])])
+    return at_strike, peak

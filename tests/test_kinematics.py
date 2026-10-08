@@ -153,3 +153,41 @@ def test_ground_contact_times_raises_when_toe_off_precedes_its_strike():
 def test_ground_contact_times_raises_on_mismatched_lengths():
     with pytest.raises(ValueError):
         k.ground_contact_times([0.1, 0.5], [0.2])
+
+
+@pytest.mark.parametrize("fps", [60, 240])
+def test_contact_time_error_is_bounded_by_one_frame_period_at_both_rates(fps):
+    lm, _ = make_synthetic_gait(
+        cadence_spm=170.0, contact_time_s=0.25, fps=fps, seconds=10, seed=0)
+    heel_y = joint_xy(lm, "left_heel")[:, 1]
+    contact = k.ground_contact_times(
+        k.detect_foot_strikes(heel_y, fps), k.detect_toe_offs(heel_y, fps))
+    assert np.all(np.abs(contact - 0.25) <= 1.0 / fps + 1e-9)
+
+
+def test_one_euro_smoothing_does_not_shift_strike_timing_by_more_than_a_frame():
+    fps = 60
+    lm, _ = make_synthetic_gait(
+        cadence_spm=170.0, contact_time_s=0.25, fps=fps, seconds=10, noise=1.0, seed=0)
+    heel_y = joint_xy(lm, "left_heel")[:, 1]
+    smoothed = k.smooth(heel_y, fps, method="one_euro", min_cutoff=8.0, beta=0.05)
+    truth = make_synthetic_gait(
+        cadence_spm=170.0, contact_time_s=0.25, fps=fps, seconds=10, seed=0)[1]
+    strikes = k.detect_foot_strikes(smoothed, fps)
+    assert len(strikes) == len(truth["strike_times_left"])
+    assert np.max(np.abs(strikes - truth["strike_times_left"])) <= 3.0 / fps
+
+
+def test_knee_flexion_is_zero_for_a_straight_leg_and_90_for_a_right_angle():
+    hip, ankle = np.array([[0.0, 0.0]] * 2), np.array([[0.0, 2.0], [1.0, 1.0]])
+    knee = np.array([[0.0, 1.0], [0.0, 1.0]])
+    assert k.knee_flexion(hip, knee, ankle) == pytest.approx([0.0, 90.0])
+
+
+def test_knee_flexion_at_strike_and_peak_per_stride():
+    flex = np.array([5.0, 10.0, 40.0, 90.0, 30.0, 8.0, 12.0, 60.0, 20.0, 6.0])
+    at_strike, peak = k.knee_flexion_per_stride(flex, strike_indices=[0, 5, 9])
+    assert at_strike.tolist() == [5.0, 8.0, 6.0]
+    # Peak is searched from each strike to the next; the last strike has no
+    # following one, so it gets no stride.
+    assert peak.tolist() == [90.0, 60.0]

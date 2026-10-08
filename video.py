@@ -3,13 +3,14 @@
 Layers, so everything but the last is testable without a model or footage:
 
     read_frames(path)                 -> (fps, RGB frame iterator)   [opencv]
-    landmarks_from_frames(frames, d)  -> (frames, 33, 3) array        [pure]
+    poses_from_frames(frames, d)      -> all poses per frame          [pure]
+    track.select_runner(poses, fps)   -> (frames, 33, 3) runner array [pure]
     mediapipe_detector(model_path)    -> d: RGB frame -> (33, 3)|None [mediapipe]
     extract_landmarks(path, ...)      -> (landmarks, fps)             [glue]
 
 A detector `d` is any callable taking one RGB frame (H, W, 3, uint8) and
-returning a (33, 3) array of (x_px, y_px, visibility) or None when no
-person is found. Tests inject stand-ins; real runs use mediapipe_detector.
+returning a list of (33, 3) arrays of (x_px, y_px, visibility), one per
+person found (empty if none). track.select_runner picks the runner. Tests inject stand-ins; real runs use mediapipe_detector.
 
 Current mediapipe (1.x) ships only the Tasks API (no mp.solutions), which needs
 a pose_landmarker .task model file. This repo does not bundle or download
@@ -24,9 +25,9 @@ from collections.abc import Callable, Iterable, Iterator
 import numpy as np
 from numpy.typing import NDArray
 
-from landmarks import NUM_LANDMARKS
+from track import select_runner
 
-Detector = Callable[[NDArray[np.uint8]], NDArray[np.float64] | None]
+Detector = Callable[[NDArray[np.uint8]], list[NDArray[np.float64]]]
 
 
 def read_frames(path: str) -> tuple[float, Iterator[NDArray[np.uint8]]]:
@@ -56,21 +57,12 @@ def read_frames(path: str) -> tuple[float, Iterator[NDArray[np.uint8]]]:
     return fps, frames()
 
 
-def landmarks_from_frames(frames: Iterable[NDArray[np.uint8]], detect: Detector) -> NDArray[np.float64]:
-    """Run `detect` on each frame; stack to (frames, 33, 3). A frame with no
-    detection becomes NaN x/y with visibility 0, so downstream code can tell
-    "lost" from "at the origin"."""
-    out = []
-    for frame in frames:
-        lm = detect(frame)
-        if lm is None:
-            lm = np.full((NUM_LANDMARKS, 3), np.nan)
-            lm[:, 2] = 0.0
-        out.append(np.asarray(lm, dtype=float))
-    return np.stack(out) if out else np.zeros((0, NUM_LANDMARKS, 3))
+def poses_from_frames(frames: Iterable[NDArray[np.uint8]], detect: Detector) -> list[list[NDArray[np.float64]]]:
+    """Run `detect` on each frame: poses[i] is every pose found in frame i."""
+    return [[np.asarray(p, dtype=float) for p in detect(frame)] for frame in frames]
 
 
-def mediapipe_detector(model_path: str, fps: float = 30.0, **options: object) -> Detector:
+def mediapipe_detector(model_path: str, fps: float = 30.0, num_poses: int = 4, **options: object) -> Detector:
     """A detector backed by MediaPipe's PoseLandmarker (VIDEO mode, so it
     tracks between frames). Frames must be fed in order. fps only sets the
     timestamps. Extra options go to PoseLandmarkerOptions."""
@@ -83,7 +75,7 @@ def mediapipe_detector(model_path: str, fps: float = 30.0, **options: object) ->
         vision.PoseLandmarkerOptions(
             base_options=BaseOptions(model_asset_path=model_path),
             running_mode=vision.RunningMode.VIDEO,
-            num_poses=1,
+            num_poses=num_poses,
             **options,
         )
     )
@@ -95,27 +87,30 @@ def mediapipe_detector(model_path: str, fps: float = 30.0, **options: object) ->
         state["i"] += 1
         image = mp.Image(image_format=mp.ImageFormat.SRGB, data=np.ascontiguousarray(frame))
         result = landmarker.detect_for_video(image, ts_ms)
-        if not result.pose_landmarks:
-            return None
-        pts = result.pose_landmarks[0]
-        return np.array([[p.x * w, p.y * h, p.visibility] for p in pts])
+        return [np.array([[p.x * w, p.y * h, p.visibility] for p in pts]) for pts in result.pose_landmarks]
 
     return detect
 
 
 def extract_landmarks(
-    path: str, model_path: str | None = None, detect: Detector | None = None, **options: object
+    path: str,
+    model_path: str | None = None,
+    detect: Detector | None = None,
+    roi: tuple[float, float, float, float] | None = None,
+    **options: object,
 ) -> tuple[NDArray[np.float64], float]:
     """Video file -> ((frames, 33, 3) landmark array, fps).
 
     Give either `detect` (see module docstring) or `model_path` for MediaPipe.
+    roi=(x0, y0, x1, y1) in pixels picks the person whose hip starts inside it;
+    without it the runner is the person with periodic ankle motion.
     """
     fps, frames = read_frames(path)
     if detect is None:
         if model_path is None:
             raise ValueError("pass model_path (a pose_landmarker .task file) or detect")
         detect = mediapipe_detector(model_path, fps=fps, **options)
-    return landmarks_from_frames(frames, detect), fps
+    return select_runner(poses_from_frames(frames, detect), fps, roi=roi), fps
 
 
 def save_landmarks(path: str, landmarks: NDArray[np.float64], fps: float) -> None:

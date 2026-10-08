@@ -30,7 +30,7 @@ def test_video_to_report_recovers_the_generators_cadence(tmp_path, capsys):
     writer.release()
 
     it = iter(lm)
-    assert cli.main([path, "--save-landmarks", str(tmp_path / "lm.npz")], detect=lambda _f: next(it)) == 0
+    assert cli.main([path, "--save-landmarks", str(tmp_path / "lm.npz")], detect=lambda _f: [next(it)]) == 0
     assert _cadence(capsys.readouterr().out) == pytest.approx(165.0, abs=2.0)
 
     saved, saved_fps = video.load_landmarks(str(tmp_path / "lm.npz"))

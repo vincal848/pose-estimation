@@ -17,13 +17,15 @@ def main(argv: Sequence[str] | None = None, detect: video.Detector | None = None
     p.add_argument("--model", help="MediaPipe pose_landmarker .task file (video input)")
     p.add_argument("--save-landmarks", help="write the extracted landmarks to this .npz")
     p.add_argument("--m-per-px", type=float, help="metres per pixel, for metre-valued metrics")
+    p.add_argument("--roi", help="x0,y0,x1,y1 pixel box around the runner's hip (default: auto-pick)")
     p.add_argument("--facing", choices=["right", "left"], default="right")
     args = p.parse_args(argv)
 
+    roi = tuple(float(v) for v in args.roi.split(",")) if args.roi else None
     if args.input.endswith(".npz"):
         landmarks, fps = video.load_landmarks(args.input)
     else:
-        landmarks, fps = video.extract_landmarks(args.input, model_path=args.model, detect=detect)
+        landmarks, fps = video.extract_landmarks(args.input, model_path=args.model, detect=detect, roi=roi)
         if args.save_landmarks:
             video.save_landmarks(args.save_landmarks, landmarks, fps)
     print(format_report(analyze_landmarks(landmarks, fps, m_per_px=args.m_per_px, facing=args.facing)))

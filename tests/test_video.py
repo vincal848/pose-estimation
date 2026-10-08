@@ -43,31 +43,22 @@ def test_read_frames_raises_for_a_missing_file(tmp_path):
         video.read_frames(str(tmp_path / "nope.mp4"))
 
 
-def test_landmarks_from_frames_stacks_detections_in_order():
-    lm, _ = make_synthetic_gait(cadence_spm=170, contact_time_s=0.25, fps=60, seconds=2)
-    it = iter(lm)
-    out = video.landmarks_from_frames([None] * len(lm), lambda _frame: next(it))
-    assert out.shape == (120, NUM_LANDMARKS, 3)
-    assert np.array_equal(out, lm)
-
-
-def test_landmarks_from_frames_marks_missed_frames_nan_with_zero_visibility():
-    answers = iter([np.ones((NUM_LANDMARKS, 3)), None, np.ones((NUM_LANDMARKS, 3))])
-    out = video.landmarks_from_frames([0, 1, 2], lambda _f: next(answers))
-    assert np.all(np.isnan(out[1, :, :2]))
-    assert np.all(out[1, :, 2] == 0.0)
-    assert not np.isnan(out[[0, 2]]).any()
+def test_poses_from_frames_collects_every_person_per_frame():
+    answers = iter([[np.ones((NUM_LANDMARKS, 3))] * 2, []])
+    out = video.poses_from_frames([0, 1], lambda _f: next(answers))
+    assert [len(f) for f in out] == [2, 0]
 
 
 def test_extract_landmarks_runs_a_video_through_the_injected_detector(clip):
-    seen = []
+    lm, _ = make_synthetic_gait(cadence_spm=170, contact_time_s=0.25, fps=20, seconds=1.5)
+    it, seen = iter(lm), []
 
     def detect(frame):
         seen.append(int(frame.mean()))
-        return np.zeros((NUM_LANDMARKS, 3))
+        return [next(it)]
 
-    lm, fps = video.extract_landmarks(clip, detect=detect)
-    assert lm.shape == (30, NUM_LANDMARKS, 3)
+    out, fps = video.extract_landmarks(clip, detect=detect)
+    assert np.array_equal(out, lm)
     assert fps == pytest.approx(20.0)
     assert seen[0] < seen[-1]  # frames arrived in order
 

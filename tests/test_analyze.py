@@ -95,3 +95,16 @@ def test_format_report_lists_each_metric(clean):
     text = format_report(analyze_landmarks(clean[0], FPS))
     for word in ("cadence", "contact", "oscillation"):
         assert word in text
+
+
+def test_events_touching_a_long_gap_are_discarded_not_interpolated_into_a_contact():
+    # The gap swallows one foot's whole swing, so interpolating its heel
+    # joins the two neighbouring contacts into one long fake contact.
+    lm, truth = make_synthetic_gait(cadence_spm=170.0, contact_time_s=0.25, fps=FPS, seconds=12)
+    s = truth["strike_times_left"]
+    a, b = int((s[3] + 0.26) * FPS), int((s[4] + 0.02) * FPS)
+    bad = lm.copy()
+    bad[a:b, :, 2] = 0.0
+    r = analyze_landmarks(bad, FPS)
+    # Every strike whose contact or neighbourhood overlaps the gap is gone.
+    assert r["n_strikes"] <= analyze_landmarks(lm, FPS)["n_strikes"] - 3

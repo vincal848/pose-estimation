@@ -213,7 +213,17 @@ knee only), 320x240 coaching clips (runner far under 400 px), a CC0 Science
 Nation news segment on gait retraining (cut compilation, 640x360, no 4 s
 steady full-body side view), and the rest are scientific videos of animals
 or other subjects. The remaining Wikimedia running videos are the paper's
-own s003/s005 treadmill clips, already used for tuning and development. A
+own s003/s005 treadmill clips, already used for tuning and development.
+
+Pexels 4065472 ("A man jogging in the street near the lake", 1920x1080,
+29.97 fps, 12.8 s, Pexels licence; sha1 f60acd47b30cd45ef4b09fa43ade711404bff7d5)
+was judged from twelve evenly spaced frames and rejected before any run:
+it is a close tracking shot cropped at the thigh, so the knees and ankles are
+out of frame, and lamp posts repeatedly occlude the runner. It meets the fps
+and duration requirements but not "whole body including ankles". The two
+other Pexels candidates found were 24 fps and fail the fps requirement.
+
+A
 real held-out test needs a clip contributed or filmed to the requirements
 above (a phone clip of a runner at 60 fps from the side would do).
 

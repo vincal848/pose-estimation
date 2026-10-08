@@ -10,12 +10,11 @@ pose estimator can see the thing directly: where the heel is, where the
 hip is, frame by frame. The watch has to guess all of that from a wrist
 accelerometer.
 
-This is the "ideas + scaffold" stage. There is no video pipeline yet. What
-exists is the part I did not want to get wrong by building it against real
-footage first: the event-detection and metric math, tested against
-synthetic landmark sequences with an exact, known answer. Everything about
-getting from an .mp4 to a landmark array is designed and documented, not
-built.
+The metric math is tested on synthetic landmark sequences with an exact,
+known answer, and the video path (video -> landmarks -> report) is tested
+end to end with a stand-in pose detector and has been run once on a real
+public treadmill clip (see "First real-video result"). The synthetic table
+in Validation below is not real-runner data.
 
 ## Method
 
@@ -25,8 +24,9 @@ video -> landmarks per frame -> smoothing -> gait event detection -> metrics
 
 1. **Video -> landmarks.** MediaPipe Pose (BlazePose), 33 keypoints per
    frame, run on a side-view clip. Output: an `(frames, 33, 3)` array of
-   `(x_px, y_px, visibility)`. Not built yet -- `video.py` documents the
-   intended call and raises until M2.
+   `(x_px, y_px, visibility)`; frames with no detection are NaN with
+   visibility 0. Built in `video.py` (M2); tests cover the plumbing, and the
+   MediaPipe call has run once on a real clip.
 2. **Smoothing.** Savitzky-Golay or a One Euro Filter, both parameterized
    in seconds rather than frames so they scale with the video's fps. The
    One Euro Filter's adaptive cutoff matters for event timing specifically:
@@ -58,9 +58,10 @@ seconds apart, not from one short phase's duration.
 
 ## Validation
 
-Planned, once there is real video (M3/M4):
+Real-video checks (M3/M4), first pass done on one clip:
 
-- **Cadence vs. a GPS watch**, on the same run. Target: within 2 spm.
+- **Cadence vs. a hand count** of foot strikes in a public clip (no
+  watch reference for public footage). Target: within 2 spm.
 - **Contact time vs. published ranges** for recreational and trained
   runners, and against a treadmill with pressure sensing if I can get
   access to one.
@@ -106,30 +107,146 @@ above (those will shift slightly with any threshold tuning).
 - [x] **M1** -- Kinematics on synthetic landmark arrays. This scaffold:
       `kinematics.py`, `landmarks.py`, `synth.py`, tested without any
       video or model.
-- [ ] **M2** -- MediaPipe wrapper (`video.py`) + landmark export to disk.
-- [ ] **M3** -- Event detection validated on real video, not just synthetic
-      data.
-- [ ] **M4** -- Cadence validated against a GPS watch's own reading, on N
-      real runs.
+- [x] **M2** -- MediaPipe wrapper (`video.py`) + landmark export to disk.
+      Run on one real clip.
+- [~] **M3** -- Event detection checked on one real clip against a hand
+      count of strikes on one clip (cadence agrees); a held-out clip (Arakawa river) was refused
+      by the pipeline (runner too small for MediaPipe); contact time not validated.
+- [~] **M4** -- Cadence agrees with a hand count on one public clip (163 vs
+      163 spm); a single successful clip.
 - [ ] **M5** -- A per-run report: the metrics above, with the figures that
       back them up.
 
 ## Success metrics
 
-- Cadence within 2 spm of a GPS watch's own reading, across runs.
+- Cadence within 2 spm of a hand count on the public clip.
 - Contact-time repeatability (coefficient of variation across trials at
   the same pace) tight enough to tell two different running form changes
   apart, not just tight in the absolute.
 
 ## Status
 
-Scaffold. M1 in progress.
+M1 and M2 done; the MediaPipe call has run on one real clip. The pipeline
+`cli.py` (video -> landmarks -> report) runs end to end in tests on
+synthetic landmarks, including dropped and low-confidence frames. M3 and M4
+are partial: one public clip, cadence checked against a hand count (no
+smartwatch reference exists for public footage), contact time and
+oscillation not independently validated.
 
-## Quick start
+## First real-video result
+
+One clip, one run, parameters tuned on this same clip -- read it as a smoke test
+of the pipeline, not a validation study. Video: Arellano et al. 2015, PLOS
+ONE S1 video, treadmill side view at 3.0 m/s, CC BY 4.0 (see `CREDITS.md`).
+854x480, **29.97 fps**, 299 frames (10 s); MediaPipe `pose_landmarker_full`.
+Only the legs and lower hips are in frame, and a foreground object hides
+the far leg for much of the clip.
+
+| metric | pipeline | hand check |
+|---|---|---|
+| cadence | 162.9 spm (whole clip) | 15 landings by eye in frames 21-175, 14 steps in 154 frames = 163.4 spm |
+| strikes, same window | 8 near-foot strikes (frames 23-177), x2 for both feet = 15 landings | 15 landings |
+| ground contact time | 0.200 s (6 frames) | stance looks like ~8 frames (~0.27 s) by eye |
+| vertical oscillation | 18.8 px (no metre scale: runner height unknown) | not checked |
+| overstride / trunk lean | +9.7 px / 8.3 deg with `--facing left` | not checked |
+
+Sanity: 3.0 m/s at 163 spm is a 1.10 m step, in the usual range for
+recreational running.
+
+### Three clips, three roles
+
+| clip | role | pipeline cadence | hand cadence | pipeline contact | hand contact |
+|---|---|---|---|---|---|
+| s003, treadmill 3.0 m/s | tuning (`vel_frac`, cadence method chosen here) | 162.9 spm | 163.4 spm | 0.200 s | ~0.27 s |
+| s005, treadmill 9.0 m/s | development (it motivated runner selection) | 240.8 spm | ~232 spm (landings at frames 44 to 90.5, 6 steps) | 0.100 s | ~2-3 frames, ~0.1 s |
+| Arakawa river jog (Nesnad, CC BY 4.0), 1920x1080, 29.97 fps | held-out | **refused** (no person with periodic ankle motion) | ~185 spm (3 steps in frames 285-312, +-9 spm) | none | not measured |
+
+How each was run and what went wrong:
+
+- **s003** was used to pick the method and thresholds, so agreement there
+  proves little.
+- **s005** first produced no result, because MediaPipe followed a
+  bystander. With multi-person detection and runner selection (`track.py`)
+  the pipeline picks the sprinter (hip near x=364 px) and reports 240.8 spm
+  against a hand count of about 232 spm: 9 spm (4%) high, outside the 2 spm
+  target, though the hand count is only good to about +-5 spm. My first
+  hand count for this clip (~210 spm) was wrong -- it used blurry coarse
+  frames and a window that included the belt starting up -- and was redone
+  at finer frames. Ground contact (0.100 s, 3 frames) cannot be told apart
+  from the frame period at 30 fps. s005 is a development clip now; it has
+  not been used to change any threshold.
+- **Arakawa** was frozen at commit 088c1d7 before running. The runner is
+  clearly visible in side view for only about a second (frames ~285-312),
+  about 230 px tall in a 1080p panning shot. With default settings the
+  pipeline refuses; a diagnostic run on that one second found zero poses
+  in every frame, so MediaPipe's detector does not see a person this small.
+  This is a failure of detection on a small subject, and the tracker's
+  refusal is the correct output. No tuning was done on this clip. A usable
+  held-out result therefore still does not exist; the next step is a
+  crop/zoom to the runner before extraction, or a closer clip.
+- Rejected as held-out candidates before running anything: `Running form.ogv`
+  (legs below the knee only, no hips), a pole-vault athlete video, and a
+  park-path video from a moving cyclist.
+
+## Input requirements
+
+The pipeline's documented operating conditions. They were written down
+before searching for the next held-out clip and are not tuned to any
+result; a clip outside them is not a test of the pipeline.
+
+- Side view: camera roughly perpendicular to the running direction.
+- Whole body visible, including both ankles, for the whole analysed stretch.
+- Runner at least ~400 px tall in the frame.
+- At least 4 s of steady running in frame.
+- At least 25 fps (60+ for any contact-time claim).
+- A single runner, or one clearly dominant (large, central) person.
+
+**Held-out status.** No clip meeting these requirements was found, so there
+is no held-out result and none is claimed. Searched (metadata, thumbnails
+and first frames only; the pipeline was not run on any of them): Wikimedia
+Commons search and the running/jogging video categories, and Internet
+Archive search for openly licensed running video. Pexels and Pixabay could
+not be searched (automated access is blocked by a bot check), so they are
+unexamined, not ruled out. What turned up fails the requirements: the Arakawa jog
+(runner far too small and visible ~1 s), `Running form.ogv` (legs below the
+knee only), 320x240 coaching clips (runner far under 400 px), a CC0 Science
+Nation news segment on gait retraining (cut compilation, 640x360, no 4 s
+steady full-body side view), and the rest are scientific videos of animals
+or other subjects. The remaining Wikimedia running videos are the paper's
+own s003/s005 treadmill clips, already used for tuning and development.
+
+Pexels 4065472 ("A man jogging in the street near the lake", 1920x1080,
+29.97 fps, 12.8 s, Pexels licence; sha1 f60acd47b30cd45ef4b09fa43ade711404bff7d5)
+was judged from twelve evenly spaced frames and rejected before any run:
+it is a close tracking shot cropped at the thigh, so the knees and ankles are
+out of frame, and lamp posts repeatedly occlude the runner. It meets the fps
+and duration requirements but not "whole body including ankles". The two
+other Pexels candidates found were 24 fps and fail the fps requirement.
+
+A
+real held-out test needs a clip contributed or filmed to the requirements
+above (a phone clip of a runner at 60 fps from the side would do).
+
+## Running on a video
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements-dev.txt -r requirements-video.txt
+# current mediapipe only has the Tasks API: it needs a pose_landmarker
+# .task model file (Google publishes pose_landmarker_{lite,full,heavy}).
+# python scripts/fetch_video.py fetches it (and the clip below) into data/,
+# checksum-verified; nothing is committed.
+python cli.py clip.mp4 --model pose_landmarker_full.task     --save-landmarks clip.npz --m-per-px 0.002 --facing right
+python cli.py clip.npz        # re-analyse saved landmarks, no model needed
 ```
+
+The report gives cadence (steps/min, both feet, median step interval),
+ground contact time, vertical oscillation, overstride, trunk lean and knee
+flexion at strike and peak. Pixel values are always reported; metre values
+only if `--m-per-px` is given. Short detector dropouts (<= 0.2 s) are
+interpolated; events touching longer gaps are discarded. Videos stay out of
+the repo (`data/`, `*.mp4` are git-ignored).
+
+## Quick start
 
 ```python
 from synth import make_synthetic_gait
@@ -145,7 +262,7 @@ k.cadence_spm(strikes) * 2   # both-feet cadence from one tracked foot
 ```
 
 ```bash
-pytest tests -q   # 39 tests
+pytest tests -q   # 69 tests
 ```
 
 ## Repository guide
@@ -155,8 +272,12 @@ pytest tests -q   # 39 tests
 | `landmarks.py` | MediaPipe's 33-point layout, joint lookup, pixel-to-metre scale |
 | `kinematics.py` | Smoothing, gait event detection, every gait metric |
 | `synth.py` | Synthetic landmark arrays with known, exact gait events |
-| `video.py` | MediaPipe extraction -- stubbed, API documented, lands in M2 |
-| `tests/` | 39 tests, synthetic data only, no network, no model downloads |
+| `scripts/fetch_video.py` | Checksum-verified download of the clip and model into `data/`; licences in `CREDITS.md` |
+| `video.py` | Frame reading, detector seam, MediaPipe PoseLandmarker adapter, `.npz` export |
+| `track.py` | Pure runner selection from multi-person detections (nearest-hip tracks, ankle periodicity or ROI) |
+| `analyze.py` | Pure landmarks -> metrics report; gap interpolation, low-confidence handling |
+| `cli.py` | `python cli.py video-or-npz` -> printed report |
+| `tests/` | 69 tests, synthetic data only, no network, no model downloads |
 | `docs/DESIGN.md` | Landmark indices used, event-detection logic, metric formulas |
 
 ## Future interests

@@ -22,6 +22,13 @@ Same authors, paper, licence (CC BY 4.0) and no-changes statement as above;
 SHA1 e87cfda31eec61a7695414f119c25fab4ddb33d5. The paper's s007 and s009
 videos show a sprinter with a transtibial prosthesis and were not used.
 
+## Third (held-out) video
+
+`Jogging - near arakawa river - tokyo japan - 2022 may 3.webm`, by Nesnad
+(own work), CC BY 4.0, https://creativecommons.org/licenses/by/4.0/ ;
+https://commons.wikimedia.org/wiki/File:Jogging_-_near_arakawa_river_-_tokyo_japan_-_2022_may_3.webm ;
+SHA1 4abc01befcc367d62d1839019153ed974f3ebe07. Unchanged; not redistributed.
+
 ## MediaPipe model
 
 `pose_landmarker_full.task` from Google's MediaPipe model storage

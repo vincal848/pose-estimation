@@ -110,8 +110,8 @@ above (those will shift slightly with any threshold tuning).
 - [x] **M2** -- MediaPipe wrapper (`video.py`) + landmark export to disk.
       Run on one real clip.
 - [~] **M3** -- Event detection checked on one real clip against a hand
-      count of strikes on one clip (cadence agrees); a held-out clip failed at
-      pose extraction; contact time not validated.
+      count of strikes on one clip (cadence agrees); a held-out clip (Arakawa river) was refused
+      by the pipeline (runner too small for MediaPipe); contact time not validated.
 - [~] **M4** -- Cadence agrees with a hand count on one public clip (163 vs
       163 spm); a single successful clip.
 - [ ] **M5** -- A per-run report: the metrics above, with the figures that
@@ -153,42 +153,40 @@ the far leg for much of the clip.
 Sanity: 3.0 m/s at 163 spm is a 1.10 m step, in the usual range for
 recreational running.
 
-### Held-out clip: a miss
+### Three clips, three roles
 
-Before running, parameters were frozen at commit ba10b3c (`vel_frac=1.5`,
-everything else default). Held-out clip: the same paper's s005, the same
-non-amputee sprinter at 9.0 m/s (854x480, 29.97 fps, 295 frames, CC BY 4.0).
-The s007 and s009 videos are prosthesis trials and were skipped.
+| clip | role | pipeline cadence | hand cadence | pipeline contact | hand contact |
+|---|---|---|---|---|---|
+| s003, treadmill 3.0 m/s | tuning (`vel_frac`, cadence method chosen here) | 162.9 spm | 163.4 spm | 0.200 s | ~0.27 s |
+| s005, treadmill 9.0 m/s | development (it motivated runner selection) | 240.8 spm | ~232 spm (landings at frames 44 to 90.5, 6 steps) | 0.100 s | ~2-3 frames, ~0.1 s |
+| Arakawa river jog (Nesnad, CC BY 4.0), 1920x1080, 29.97 fps | held-out | **refused** (no person with periodic ankle motion) | ~185 spm (3 steps in frames 285-312, +-9 spm) | none | not measured |
 
-| clip | pipeline cadence | hand cadence | pipeline contact | hand contact |
-|---|---|---|---|---|
-| s003, 3.0 m/s (tuned on) | 162.9 spm | 163.4 spm | 0.200 s | ~0.27 s |
-| s005, 9.0 m/s (held out) | **no result** (refused: key joints never visible) | ~210 spm (11 landings in frames 4-89, 10 steps in 85 frames; about +-5 spm) | none | about 3 frames, ~0.1 s (rough) |
+How each was run and what went wrong:
 
-The pipeline did not produce a number, and that is the honest outcome:
-this is a wide shot with two bystanders and a rail-gripping harness, and
-MediaPipe (one pose per frame) locked onto a bystander (median hip x=642,
-shoulder y=87 px, nowhere near the runner; far-leg visibility 0.2). No
-threshold change would fix that, so nothing was tuned. An exploratory
-crop to the runner's side of the frame also gave nonsense (245 spm, hip at
-the crop edge), so I did not build cropping. This is a failure of the pose
-estimator on the scene, not an analysis bug; the cadence method has so far
-been checked on a single clip. Next step if wanted: pick the runner
-explicitly (crop or `num_poses` plus a track) before extraction.
-
-Caveats, plainly: (1) at 30 fps one frame is 33 ms, so contact time is good
-to about +-1 frame and I would not trust it; cadence is fine. (2) The
-heel-based contact time is shorter than the visible stance because the heel
-leaves the belt before the toe does. (3) The hand count is mine, from
-stepped frames, with a +-1 frame landing judgement -- about +-2.6 spm over
-that window. (4) The far foot's heel track was junk (the hidden leg) while
-its visibility score stayed high, so the report takes cadence and contact
-time from whichever foot has the most regular strikes. (5) The runner faces
-left; `--facing left` is needed for the overstride and lean signs.
-
-Bugs found by this run and fixed with tests: median step interval quantised
-cadence to whole frames; a tight velocity gate kept only the middle of each
-real, rounded contact; a junk far-foot track corrupted merged cadence.
+- **s003** was used to pick the method and thresholds, so agreement there
+  proves little.
+- **s005** first produced no result, because MediaPipe followed a
+  bystander. With multi-person detection and runner selection (`track.py`)
+  the pipeline picks the sprinter (hip near x=364 px) and reports 240.8 spm
+  against a hand count of about 232 spm: 9 spm (4%) high, outside the 2 spm
+  target, though the hand count is only good to about +-5 spm. My first
+  hand count for this clip (~210 spm) was wrong -- it used blurry coarse
+  frames and a window that included the belt starting up -- and was redone
+  at finer frames. Ground contact (0.100 s, 3 frames) cannot be told apart
+  from the frame period at 30 fps. s005 is a development clip now; it has
+  not been used to change any threshold.
+- **Arakawa** was frozen at commit 088c1d7 before running. The runner is
+  clearly visible in side view for only about a second (frames ~285-312),
+  about 230 px tall in a 1080p panning shot. With default settings the
+  pipeline refuses; a diagnostic run on that one second found zero poses
+  in every frame, so MediaPipe's detector does not see a person this small.
+  This is a failure of detection on a small subject, and the tracker's
+  refusal is the correct output. No tuning was done on this clip. A usable
+  held-out result therefore still does not exist; the next step is a
+  crop/zoom to the runner before extraction, or a closer clip.
+- Rejected as held-out candidates before running anything: `Running form.ogv`
+  (legs below the knee only, no hips), a pole-vault athlete video, and a
+  park-path video from a moving cyclist.
 
 ## Running on a video
 
@@ -225,7 +223,7 @@ k.cadence_spm(strikes) * 2   # both-feet cadence from one tracked foot
 ```
 
 ```bash
-pytest tests -q   # 65 tests
+pytest tests -q   # 69 tests
 ```
 
 ## Repository guide
@@ -237,9 +235,10 @@ pytest tests -q   # 65 tests
 | `synth.py` | Synthetic landmark arrays with known, exact gait events |
 | `scripts/fetch_video.py` | Checksum-verified download of the clip and model into `data/`; licences in `CREDITS.md` |
 | `video.py` | Frame reading, detector seam, MediaPipe PoseLandmarker adapter, `.npz` export |
+| `track.py` | Pure runner selection from multi-person detections (nearest-hip tracks, ankle periodicity or ROI) |
 | `analyze.py` | Pure landmarks -> metrics report; gap interpolation, low-confidence handling |
 | `cli.py` | `python cli.py video-or-npz` -> printed report |
-| `tests/` | 65 tests, synthetic data only, no network, no model downloads |
+| `tests/` | 69 tests, synthetic data only, no network, no model downloads |
 | `docs/DESIGN.md` | Landmark indices used, event-detection logic, metric formulas |
 
 ## Future interests

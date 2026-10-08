@@ -27,6 +27,11 @@ FILES = {
         "sha1",
         "e87cfda31eec61a7695414f119c25fab4ddb33d5",
     ),
+    "video_heldout2": (
+        "https://upload.wikimedia.org/wikipedia/commons/1/1b/Jogging_-_near_arakawa_river_-_tokyo_japan_-_2022_may_3.webm",
+        "sha1",
+        "4abc01befcc367d62d1839019153ed974f3ebe07",
+    ),
     "model": (
         "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task",
         "sha256",

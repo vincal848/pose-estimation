@@ -110,9 +110,10 @@ above (those will shift slightly with any threshold tuning).
 - [x] **M2** -- MediaPipe wrapper (`video.py`) + landmark export to disk.
       Run on one real clip.
 - [~] **M3** -- Event detection checked on one real clip against a hand
-      count of strikes (cadence agrees); contact time not validated.
+      count of strikes on one clip (cadence agrees); a held-out clip failed at
+      pose extraction; contact time not validated.
 - [~] **M4** -- Cadence agrees with a hand count on one public clip (163 vs
-      163 spm); a single clip, not N runs.
+      163 spm); a single successful clip.
 - [ ] **M5** -- A per-run report: the metrics above, with the figures that
       back them up.
 
@@ -151,6 +152,29 @@ the far leg for much of the clip.
 
 Sanity: 3.0 m/s at 163 spm is a 1.10 m step, in the usual range for
 recreational running.
+
+### Held-out clip: a miss
+
+Before running, parameters were frozen at commit ba10b3c (`vel_frac=1.5`,
+everything else default). Held-out clip: the same paper's s005, the same
+non-amputee sprinter at 9.0 m/s (854x480, 29.97 fps, 295 frames, CC BY 4.0).
+The s007 and s009 videos are prosthesis trials and were skipped.
+
+| clip | pipeline cadence | hand cadence | pipeline contact | hand contact |
+|---|---|---|---|---|
+| s003, 3.0 m/s (tuned on) | 162.9 spm | 163.4 spm | 0.200 s | ~0.27 s |
+| s005, 9.0 m/s (held out) | **no result** (refused: key joints never visible) | ~210 spm (11 landings in frames 4-89, 10 steps in 85 frames; about +-5 spm) | none | about 3 frames, ~0.1 s (rough) |
+
+The pipeline did not produce a number, and that is the honest outcome:
+this is a wide shot with two bystanders and a rail-gripping harness, and
+MediaPipe (one pose per frame) locked onto a bystander (median hip x=642,
+shoulder y=87 px, nowhere near the runner; far-leg visibility 0.2). No
+threshold change would fix that, so nothing was tuned. An exploratory
+crop to the runner's side of the frame also gave nonsense (245 spm, hip at
+the crop edge), so I did not build cropping. This is a failure of the pose
+estimator on the scene, not an analysis bug; the cadence method has so far
+been checked on a single clip. Next step if wanted: pick the runner
+explicitly (crop or `num_poses` plus a track) before extraction.
 
 Caveats, plainly: (1) at 30 fps one frame is 33 ms, so contact time is good
 to about +-1 frame and I would not trust it; cadence is fine. (2) The

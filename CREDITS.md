@@ -14,8 +14,19 @@
   repo are our own analysis; the video is not redistributed here, it is
   downloaded by `scripts/fetch_video.py` into the git-ignored `data/`.
 
+## Held-out validation video
+
+`Effect-of-Running-Speed-and-Leg-Prostheses-on-Mediolateral-Foot-Placement-and-Its-Variability-pone.0115637.s005.ogv`
+(side view of the same non-amputee sprinter at his maximum speed, 9.0 m/s).
+Same authors, paper, licence (CC BY 4.0) and no-changes statement as above;
+SHA1 e87cfda31eec61a7695414f119c25fab4ddb33d5. The paper's s007 and s009
+videos show a sprinter with a transtibial prosthesis and were not used.
+
 ## MediaPipe model
 
 `pose_landmarker_full.task` from Google's MediaPipe model storage
 (https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task),
-Apache 2.0 per the MediaPipe project. Downloaded by the same script, not committed.
+licensed under Apache License 2.0 per Google's "Model Card BlazePose GHUM 3D"
+(https://storage.googleapis.com/mediapipe-assets/Model%20Card%20BlazePose%20GHUM%203D.pdf,
+checked 2026-10-08: "LICENSED UNDER Apache License, Version 2.0"). Downloaded by
+the same script, not committed.

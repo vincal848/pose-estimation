@@ -21,6 +21,12 @@ FILES = {
         "sha1",
         "7bebb7696c158e29d5e8f1df234ced95130216e7",
     ),
+    "video_heldout": (
+        "https://upload.wikimedia.org/wikipedia/commons/"
+        "d/db/Effect-of-Running-Speed-and-Leg-Prostheses-on-Mediolateral-Foot-Placement-and-Its-Variability-pone.0115637.s005.ogv",
+        "sha1",
+        "e87cfda31eec61a7695414f119c25fab4ddb33d5",
+    ),
     "model": (
         "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task",
         "sha256",

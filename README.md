@@ -10,12 +10,11 @@ pose estimator can see the thing directly: where the heel is, where the
 hip is, frame by frame. The watch has to guess all of that from a wrist
 accelerometer.
 
-This is the "ideas + scaffold" stage. There is no video pipeline yet. What
-exists is the part I did not want to get wrong by building it against real
-footage first: the event-detection and metric math, tested against
-synthetic landmark sequences with an exact, known answer. Everything about
-getting from an .mp4 to a landmark array is designed and documented, not
-built.
+Today the metric math is tested on synthetic landmark sequences with an
+exact, known answer, and the video path (video -> landmarks -> report) is
+built and tested end to end with a stand-in pose detector. What has *not*
+happened: no real footage and no real MediaPipe model have been run
+through it yet, so none of the numbers below describe real runners.
 
 ## Method
 
@@ -25,8 +24,9 @@ video -> landmarks per frame -> smoothing -> gait event detection -> metrics
 
 1. **Video -> landmarks.** MediaPipe Pose (BlazePose), 33 keypoints per
    frame, run on a side-view clip. Output: an `(frames, 33, 3)` array of
-   `(x_px, y_px, visibility)`. Not built yet -- `video.py` documents the
-   intended call and raises until M2.
+   `(x_px, y_px, visibility)`; frames with no detection are NaN with
+   visibility 0. Built in `video.py` (M2), but only the plumbing is
+   exercised by tests -- the MediaPipe call itself has not been run.
 2. **Smoothing.** Savitzky-Golay or a One Euro Filter, both parameterized
    in seconds rather than frames so they scale with the video's fps. The
    One Euro Filter's adaptive cutoff matters for event timing specifically:
@@ -60,7 +60,8 @@ seconds apart, not from one short phase's duration.
 
 Planned, once there is real video (M3/M4):
 
-- **Cadence vs. a GPS watch**, on the same run. Target: within 2 spm.
+- **Cadence vs. a hand count** of foot strikes in a public clip (no
+  watch reference for public footage). Target: within 2 spm.
 - **Contact time vs. published ranges** for recreational and trained
   runners, and against a treadmill with pressure sensing if I can get
   access to one.
@@ -106,30 +107,51 @@ above (those will shift slightly with any threshold tuning).
 - [x] **M1** -- Kinematics on synthetic landmark arrays. This scaffold:
       `kinematics.py`, `landmarks.py`, `synth.py`, tested without any
       video or model.
-- [ ] **M2** -- MediaPipe wrapper (`video.py`) + landmark export to disk.
+- [x] **M2** -- MediaPipe wrapper (`video.py`) + landmark export to disk.
+      Code and plumbing tests done; the MediaPipe call is unrun until a
+      model file and a real clip are in hand.
 - [ ] **M3** -- Event detection validated on real video, not just synthetic
       data.
-- [ ] **M4** -- Cadence validated against a GPS watch's own reading, on N
-      real runs.
+- [ ] **M4** -- Cadence validated against a hand-counted reference on a
+      public clip (no GPS watch reading available).
 - [ ] **M5** -- A per-run report: the metrics above, with the figures that
       back them up.
 
 ## Success metrics
 
-- Cadence within 2 spm of a GPS watch's own reading, across runs.
+- Cadence within 2 spm of a hand count on the public clip.
 - Contact-time repeatability (coefficient of variation across trials at
   the same pace) tight enough to tell two different running form changes
   apart, not just tight in the absolute.
 
 ## Status
 
-Scaffold. M1 in progress.
+M1 done. M2 code done, MediaPipe call itself unverified. The pipeline
+`cli.py` (video -> landmarks -> report) runs end to end in tests on
+synthetic landmarks, including dropped and low-confidence frames. M3 and M4
+need a real clip; the plan is an openly licensed public video, so there is
+no smartwatch cadence comparison -- M4 becomes "cadence agrees with a hand
+count of strikes in the clip."
 
-## Quick start
+## Running on a video
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements-dev.txt -r requirements-video.txt
+# current mediapipe only has the Tasks API: it needs a pose_landmarker
+# .task model file (Google publishes pose_landmarker_{lite,full,heavy}).
+# It is not bundled or downloaded by this repo; keep it outside git.
+python cli.py clip.mp4 --model pose_landmarker_full.task     --save-landmarks clip.npz --m-per-px 0.002 --facing right
+python cli.py clip.npz        # re-analyse saved landmarks, no model needed
 ```
+
+The report gives cadence (steps/min, both feet, median step interval),
+ground contact time, vertical oscillation, overstride, trunk lean and knee
+flexion at strike and peak. Pixel values are always reported; metre values
+only if `--m-per-px` is given. Short detector dropouts (<= 0.2 s) are
+interpolated; events touching longer gaps are discarded. Videos stay out of
+the repo (`data/`, `*.mp4` are git-ignored).
+
+## Quick start
 
 ```python
 from synth import make_synthetic_gait
@@ -145,7 +167,7 @@ k.cadence_spm(strikes) * 2   # both-feet cadence from one tracked foot
 ```
 
 ```bash
-pytest tests -q   # 39 tests
+pytest tests -q   # 61 tests
 ```
 
 ## Repository guide
@@ -155,8 +177,10 @@ pytest tests -q   # 39 tests
 | `landmarks.py` | MediaPipe's 33-point layout, joint lookup, pixel-to-metre scale |
 | `kinematics.py` | Smoothing, gait event detection, every gait metric |
 | `synth.py` | Synthetic landmark arrays with known, exact gait events |
-| `video.py` | MediaPipe extraction -- stubbed, API documented, lands in M2 |
-| `tests/` | 39 tests, synthetic data only, no network, no model downloads |
+| `video.py` | Frame reading, detector seam, MediaPipe PoseLandmarker adapter, `.npz` export |
+| `analyze.py` | Pure landmarks -> metrics report; gap interpolation, low-confidence handling |
+| `cli.py` | `python cli.py video-or-npz` -> printed report |
+| `tests/` | 61 tests, synthetic data only, no network, no model downloads |
 | `docs/DESIGN.md` | Landmark indices used, event-detection logic, metric formulas |
 
 ## Future interests

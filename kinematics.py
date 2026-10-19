@@ -161,6 +161,31 @@ def detect_toe_offs(heel_y, fps, ground_frac=0.25, vel_frac=0.5, min_run_frames=
     return ends / fps
 
 
+def stride_period(heel_y, fps):
+    """One foot's stride period (seconds) from its heel-y series, or None
+    if the trace has no clear periodicity: the first autocorrelation peak
+    after the zero-lag lobe that reaches half the height of the tallest
+    later peak, refined to sub-frame lag with a parabola through its three
+    samples. Taking the first such peak, not the tallest, avoids locking
+    onto a multiple of the period.
+    """
+    y = np.asarray(heel_y, dtype=float)
+    y = y - y.mean()
+    if len(y) < 4 or not y.any():
+        return None
+    ac = np.correlate(y, y, "full")[len(y) - 1:] / (y @ y)
+    if not (ac < 0).any():
+        return None
+    lobe_end = int(np.argmax(ac < 0))
+    floor = 0.5 * ac[lobe_end:].max()
+    for i in range(lobe_end + 1, len(ac) - 1):
+        if ac[i] >= floor and ac[i] >= ac[i - 1] and ac[i] >= ac[i + 1]:
+            curv = ac[i - 1] - 2 * ac[i] + ac[i + 1]
+            shift = 0.5 * (ac[i - 1] - ac[i + 1]) / curv if curv else 0.0
+            return (i + shift) / fps
+    return None
+
+
 def cadence_spm(strike_times):
     """Steps per minute, from consecutive strike times of one tracked foot.
 

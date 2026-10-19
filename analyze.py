@@ -27,20 +27,33 @@ def _runs(mask: NDArray[np.bool_]) -> list[tuple[int, int]]:
     return list(zip(np.where(edges == 1)[0], np.where(edges == -1)[0]))
 
 
-def _stride_cadence(strikes: NDArray[np.float64]) -> tuple[float, float]:
-    """(steps/min, fraction of intervals that look like a real stride) from
-    one foot's strike times. Each interval counts as k strides, k being the
-    whole number nearest to interval/median; intervals that are not near a
-    whole number (a spurious or missing strike) are ignored. Summing k over
-    summed time keeps full-clip precision instead of whole-frame quantised
-    medians. Returns (nan, 0) with fewer than three strikes."""
-    if len(strikes) < 3:
+def _stride_cadence(strikes: NDArray[np.float64], period: float | None) -> tuple[float, float]:
+    """(steps/min, fraction of the strike span that adds up to whole
+    strides) from one foot's strike times and its rough stride period
+    (kinematics.stride_period). Intervals shorter than a stride are merged
+    with the next one, so a spurious strike inside a stride (seen on the
+    real clip: MediaPipe swaps the leg labels for a few frames after the
+    other foot lands) leaves the stride intact; a merged interval then
+    counts as k strides, k the whole number nearest interval/period, or is
+    dropped if not near one (a junk stretch). Summing k over summed time
+    keeps full-clip precision instead of whole-frame quantisation; the
+    period only has to be right to within the 25% tolerance. Returns
+    (nan, 0) with fewer than three strikes or no period."""
+    if len(strikes) < 3 or period is None:
         return float("nan"), 0.0
-    d = np.diff(strikes)
-    ratio = d / np.median(d)
-    k_strides = np.round(ratio)
-    ok = (k_strides >= 1) & (np.abs(ratio - k_strides) < 0.25)
-    return 120.0 * float(k_strides[ok].sum() / d[ok].sum()), float(ok.mean())
+    strides, used, acc = 0, 0.0, 0.0
+    for d in np.diff(strikes):
+        acc += d
+        ratio = acc / period
+        if ratio < 0.75:
+            continue
+        k_strides = round(ratio)
+        if abs(ratio - k_strides) < 0.25:
+            strides, used = strides + k_strides, used + acc
+        acc = 0.0
+    if strides == 0:
+        return float("nan"), 0.0
+    return 120.0 * strides / used, used / (strikes[-1] - strikes[0])
 
 
 def analyze_landmarks(
@@ -80,7 +93,7 @@ def analyze_landmarks(
     hip_s = k.smooth(hip[:, 1], fps)
     keep = ~long_gap
 
-    strikes, contacts, overstride, flex_strike, flex_peak = [], [], [], [], []
+    strikes, periods, contacts, overstride, flex_strike, flex_peak = [], [], [], [], [], []
     for side in ("left", "right"):
         heel, knee, ankle, hip_side = (series(f"{side}_{j}") for j in ("heel", "knee", "ankle", "hip"))
         heel_y = k.smooth(heel[:, 1], fps)
@@ -89,6 +102,7 @@ def analyze_landmarks(
         ok = np.array([not long_gap[max(a - 1, 0): b + 2].any() for a, b in zip(si, ti)], dtype=bool)
         s, t, si = s[ok], t[ok], si[ok]
         strikes.append(s)
+        periods.append(k.stride_period(heel_y, fps))
         contacts.append(k.ground_contact_times(s, t))
         overstride.append(sign * k.overstride(heel[:, 0], hip_side[:, 0], si))
         if len(si) >= 2:
@@ -101,7 +115,7 @@ def analyze_landmarks(
     # Cadence and contact time come from the foot with the most regular
     # strikes: a leg hidden behind something can have a junk heel track
     # while still reporting high visibility.
-    scored = [_stride_cadence(s) for s in strikes]
+    scored = [_stride_cadence(s, p) for s, p in zip(strikes, periods)]
     best = int(np.argmax([score for _, score in scored]))
     if scored[best][1] == 0.0:
         raise ValueError("no gait events found (need at least three foot strikes on one foot)")

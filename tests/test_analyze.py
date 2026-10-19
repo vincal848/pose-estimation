@@ -135,3 +135,19 @@ def test_contact_time_survives_the_rounded_heel_traces_of_real_footage():
     for i in (27, 28, 29, 30):  # left/right ankle and heel
         lm[:, i, 1] = np.convolve(np.pad(lm[:, i, 1], 2, mode="edge"), np.ones(5) / 5, "valid")
     assert analyze_landmarks(lm, 30)["ground_contact_time_s"] == pytest.approx(0.27, abs=1.5 / 30)
+
+
+def test_spurious_strikes_inside_most_strides_do_not_inflate_cadence():
+    # On the real 30 fps clip MediaPipe swapped the leg labels for a few
+    # frames after the other foot landed, giving a heel a short fake
+    # contact ~8 frames before many real strikes. The median strike
+    # interval was then the short piece of a split stride: 237 spm for a
+    # 163 spm runner.
+    lm, truth = make_synthetic_gait(cadence_spm=166.0, contact_time_s=0.25, fps=30, seconds=12, noise=0.5, seed=1)
+    for side, heel in (("left", 29), ("right", 30)):
+        ground = lm[:, heel, 1].max()
+        for j, t in enumerate(truth[f"strike_times_{side}"]):
+            if j % 3:
+                i = int(round(t * 30)) - 8
+                lm[i:i + 4, heel, 1] = ground
+    assert analyze_landmarks(lm, 30)["cadence_spm"] == pytest.approx(166.0, abs=1.5)

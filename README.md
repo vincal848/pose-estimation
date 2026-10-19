@@ -110,12 +110,11 @@ above (those will shift slightly with any threshold tuning).
 - [x] **M2** -- MediaPipe wrapper (`video.py`) + landmark export to disk.
       Run on one real clip.
 - [~] **M3** -- Event detection checked on one real clip against a hand
-      count of strikes on one clip (cadence agreed with the MediaPipe version
-      first used, not with mediapipe 1.1.1); a held-out clip (Arakawa river) was refused
+      count of strikes on one clip (the clip the method was tuned on); a held-out clip (Arakawa river) was refused
       by the pipeline (runner too small for MediaPipe); contact time not validated.
-- [~] **M4** -- Cadence agreed with a hand count on one public clip (163 vs
-      163 spm) with the MediaPipe version first used; with mediapipe 1.1.1
-      the same clip gives 236.6 spm, so this is not currently met.
+- [~] **M4** -- Cadence agreed with a hand count on one public clip (162.9
+      vs 163.4 spm, mediapipe 1.1.1), but that is the tuning clip; the
+      development clip is 13 spm high and no held-out clip has a result.
 - [ ] **M5** -- A per-run report: the metrics above, with the figures that
       back them up.
 
@@ -146,16 +145,16 @@ the far leg for much of the clip.
 
 | metric | pipeline, mediapipe 1.1.1 | pipeline, first run (earlier mediapipe) | hand check |
 |---|---|---|---|
-| cadence | **236.6 spm** (whole clip) | 162.9 spm (whole clip) | 15 landings by eye in frames 21-175, 14 steps in 154 frames = 163.4 spm |
+| cadence | **162.9 spm** (whole clip; 236.6 spm before the fix below) | 162.9 spm (whole clip) | 15 landings by eye in frames 21-175, 14 steps in 154 frames = 163.4 spm |
 | strikes, same window | 10 near-foot strikes (frames 23-176): the 8 real ones plus 2 spurious | 8 near-foot strikes (frames 23-177), x2 for both feet = 15 landings | 15 landings |
-| ground contact time | 0.100 s (3 frames) | 0.200 s (6 frames) | stance looks like ~8 frames (~0.27 s) by eye |
+| ground contact time | 0.133 s (4 frames) | 0.200 s (6 frames) | stance looks like ~8 frames (~0.27 s) by eye |
 | vertical oscillation | 55.0 px | 18.8 px (no metre scale: runner height unknown) | not checked |
 | overstride / trunk lean | +22.2 px / 11.7 deg | +9.7 px / 8.3 deg with `--facing left` | not checked |
 
 Sanity: 3.0 m/s at 163 spm is a 1.10 m step, in the usual range for
 recreational running.
 
-**mediapipe 1.1.1 misses the hand count by 73 spm.** First, with 1.1.1 the
+**mediapipe 1.1.1 first missed the hand count by 73 spm.** First, with 1.1.1 the
 tracker split the runner into 12 tracks (MediaPipe sometimes reports the
 runner twice in one frame, the copy a smaller partial pose, and the runner
 then moved onto the copy's track), so the run stopped with "only 12% of
@@ -165,17 +164,29 @@ frames with any detection). The cadence is still wrong: the near-foot heel
 strikes are found every ~22 frames as before (23, 44, 65, 90, 110, 132, 154,
 176, ... 287, i.e. ~163 spm), but 1.1.1 adds a spurious strike about 8
 frames before several of them (125, 147, 190, 234, 279). Those short
-intervals pull the median interval in the cadence estimate down to about 15
-frames, and the estimate reads 236.6 spm. The likely source is the far leg,
-hidden behind the foreground object, being mixed up with the near leg. The
-cadence method has not been changed to fix this.
+intervals pulled the median interval in the cadence estimate down to about
+15 frames, and the estimate read 236.6 spm. The cause is MediaPipe swapping
+the left and right leg labels for about 3 frames just after the right foot
+lands (frames 124-126, for example: the "left" heel sits on the ground in
+front while the "right" heel is in the air behind), so the left heel trace
+briefly shows the right foot's contact.
+
+The cadence estimate now takes each foot's rough stride period from the
+autocorrelation of its heel trace (`kinematics.stride_period`: 21.9 frames
+for the near foot here) instead of the median strike interval, and merges an
+interval shorter than 0.75 of that period with the next one, so a split
+stride counts as one stride. That gives 162.9 spm, 0.5 spm under the hand
+count. This was worked out on this clip, so it is not evidence that the
+method generalises; the label swaps still corrupt the per-strike metrics
+(contact time is 0.133 s against ~0.27 s by eye), which this change does not
+address.
 
 ### Three clips, three roles
 
 | clip | role | pipeline cadence | hand cadence | pipeline contact | hand contact |
 |---|---|---|---|---|---|
-| s003, treadmill 3.0 m/s | tuning (`vel_frac`, cadence method chosen here) | 236.6 spm with mediapipe 1.1.1 (162.9 spm with the earlier version) | 163.4 spm | 0.100 s (0.200 s earlier) | ~0.27 s |
-| s005, treadmill 9.0 m/s | development (it motivated runner selection) | 240.8 spm | ~232 spm (landings at frames 44 to 90.5, 6 steps) | 0.100 s | ~2-3 frames, ~0.1 s |
+| s003, treadmill 3.0 m/s | tuning (`vel_frac`, cadence method chosen here) | 162.9 spm with mediapipe 1.1.1 (236.6 spm before the stride-period fix; 162.9 spm with the earlier version) | 163.4 spm | 0.133 s (0.200 s earlier) | ~0.27 s |
+| s005, treadmill 9.0 m/s | development (it motivated runner selection) | 245.5 spm (240.8 spm before the stride-period fix) | ~232 spm (landings at frames 44 to 90.5, 6 steps) | 0.100 s | ~2-3 frames, ~0.1 s |
 | Arakawa river jog (Nesnad, CC BY 4.0), 1920x1080, 29.97 fps | held-out | **refused** (no person with periodic ankle motion) | ~185 spm (3 steps in frames 285-312, +-9 spm) | none | not measured |
 
 How each was run and what went wrong:
@@ -184,9 +195,13 @@ How each was run and what went wrong:
   proves little.
 - **s005** first produced no result, because MediaPipe followed a
   bystander. With multi-person detection and runner selection (`track.py`)
-  the pipeline picks the sprinter (hip near x=364 px) and reports 240.8 spm
-  (also with mediapipe 1.1.1) against a hand count of about 232 spm: 9 spm (4%) high, outside the 2 spm
-  target, though the hand count is only good to about +-5 spm. My first
+  the pipeline picks the sprinter (hip near x=364 px) and reports 245.5 spm
+  (mediapipe 1.1.1) against a hand count of about 232 spm: 13.5 spm (6%)
+  high, outside the 2 spm target, though the hand count is only good to
+  about +-5 spm. It was 240.8 spm before the stride-period fix made on s003:
+  the fix now also counts strides that sit around spurious strikes, which
+  were dropped before, and on this clip that moved the estimate further from
+  the hand count, not closer. My first
   hand count for this clip (~210 spm) was wrong -- it used blurry coarse
   frames and a window that included the belt starting up -- and was redone
   at finer frames. Ground contact (0.100 s, 3 frames) cannot be told apart

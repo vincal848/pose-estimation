@@ -26,30 +26,34 @@ def _torso(pose: Pose) -> float:
 def build_tracks(
     poses: list[list[Pose]], max_gap: int, jump_torsos: float = 1.5
 ) -> list[dict[int, Pose]]:
-    """Greedy nearest-hip linking. A pose joins a track whose last hip is
+    """Greedy nearest-hip linking. A pose may join a track whose last hip is
     within jump_torsos torso lengths and was seen within max_gap frames;
-    otherwise it starts a new track. ponytail: greedy, so two people
+    within a frame the longest tracks pick first, each taking its nearest
+    such pose. A pose left over starts a new track. Longest-first stops a
+    duplicate or partial detection from starting a track that then wins the
+    runner by being a few px nearer. ponytail: greedy, so two people
     crossing paths can swap tracks; use Hungarian matching if that bites."""
     tracks: list[dict[int, Pose]] = []
     last: list[int] = []
     for i, frame in enumerate(poses):
-        taken: set[int] = set()
-        for pose in frame:
-            best, best_d = None, jump_torsos * _torso(pose)
+        pairs = []
+        for j, pose in enumerate(frame):
             for t, tr in enumerate(tracks):
-                if t in taken or i - last[t] > max_gap:
-                    continue
                 d = float(np.linalg.norm(_hip(tr[last[t]]) - _hip(pose)))
-                if d <= best_d:
-                    best, best_d = t, d
-            if best is None:
+                if i - last[t] <= max_gap and d <= jump_torsos * _torso(pose):
+                    pairs.append((-len(tr), d, j, t))
+        linked: set[int] = set()
+        taken: set[int] = set()
+        for _, _, j, t in sorted(pairs):
+            if j not in linked and t not in taken:
+                tracks[t][i] = frame[j]
+                last[t] = i
+                linked.add(j)
+                taken.add(t)
+        for j, pose in enumerate(frame):
+            if j not in linked:
                 tracks.append({i: pose})
                 last.append(i)
-                taken.add(len(tracks) - 1)
-            else:
-                tracks[best][i] = pose
-                last[best] = i
-                taken.add(best)
     return tracks
 
 

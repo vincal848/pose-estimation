@@ -57,3 +57,23 @@ def test_says_so_when_nobody_runs():
     still = make_synthetic_gait(cadence_spm=170.0, contact_time_s=0.25, fps=FPS, seconds=4)[0][0]
     with pytest.raises(ValueError, match="periodic"):
         select_runner([[still]] * 120, FPS)
+
+
+def test_a_duplicate_detection_does_not_split_the_runner(runner):
+    # On a treadmill the hip stays put. MediaPipe sometimes also reports a
+    # smaller partial copy of the runner at the same hip (s003, frame 53);
+    # that copy starts a track, and the runner must not move onto it.
+    hip_x = joint_xy(runner, "left_hip")[:, 0]
+    treadmill = runner.copy()
+    treadmill[:, :, 0] -= (hip_x - hip_x[0])[:, None]
+    dup = range(5, len(runner), 20)
+    scene = [[r] for r in treadmill]
+    for i in dup:
+        hip = treadmill[i, 23, :2]
+        partial = treadmill[i].copy()
+        partial[:, :2] = hip + 0.5 * (partial[:, :2] - hip) + 2.0
+        scene[i].append(partial)
+    out = select_runner(scene, FPS)
+    clean = [i for i in range(len(runner)) if i not in dup]
+    assert np.isfinite(out[:, :, :2]).all()
+    assert np.array_equal(out[clean], treadmill[clean])

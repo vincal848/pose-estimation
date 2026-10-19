@@ -110,10 +110,12 @@ above (those will shift slightly with any threshold tuning).
 - [x] **M2** -- MediaPipe wrapper (`video.py`) + landmark export to disk.
       Run on one real clip.
 - [~] **M3** -- Event detection checked on one real clip against a hand
-      count of strikes on one clip (cadence agrees); a held-out clip (Arakawa river) was refused
+      count of strikes on one clip (cadence agreed with the MediaPipe version
+      first used, not with mediapipe 1.1.1); a held-out clip (Arakawa river) was refused
       by the pipeline (runner too small for MediaPipe); contact time not validated.
-- [~] **M4** -- Cadence agrees with a hand count on one public clip (163 vs
-      163 spm); a single successful clip.
+- [~] **M4** -- Cadence agreed with a hand count on one public clip (163 vs
+      163 spm) with the MediaPipe version first used; with mediapipe 1.1.1
+      the same clip gives 236.6 spm, so this is not currently met.
 - [ ] **M5** -- A per-run report: the metrics above, with the figures that
       back them up.
 
@@ -142,22 +144,37 @@ ONE S1 video, treadmill side view at 3.0 m/s, CC BY 4.0 (see `CREDITS.md`).
 Only the legs and lower hips are in frame, and a foreground object hides
 the far leg for much of the clip.
 
-| metric | pipeline | hand check |
-|---|---|---|
-| cadence | 162.9 spm (whole clip) | 15 landings by eye in frames 21-175, 14 steps in 154 frames = 163.4 spm |
-| strikes, same window | 8 near-foot strikes (frames 23-177), x2 for both feet = 15 landings | 15 landings |
-| ground contact time | 0.200 s (6 frames) | stance looks like ~8 frames (~0.27 s) by eye |
-| vertical oscillation | 18.8 px (no metre scale: runner height unknown) | not checked |
-| overstride / trunk lean | +9.7 px / 8.3 deg with `--facing left` | not checked |
+| metric | pipeline, mediapipe 1.1.1 | pipeline, first run (earlier mediapipe) | hand check |
+|---|---|---|---|
+| cadence | **236.6 spm** (whole clip) | 162.9 spm (whole clip) | 15 landings by eye in frames 21-175, 14 steps in 154 frames = 163.4 spm |
+| strikes, same window | 10 near-foot strikes (frames 23-176): the 8 real ones plus 2 spurious | 8 near-foot strikes (frames 23-177), x2 for both feet = 15 landings | 15 landings |
+| ground contact time | 0.100 s (3 frames) | 0.200 s (6 frames) | stance looks like ~8 frames (~0.27 s) by eye |
+| vertical oscillation | 55.0 px | 18.8 px (no metre scale: runner height unknown) | not checked |
+| overstride / trunk lean | +22.2 px / 11.7 deg | +9.7 px / 8.3 deg with `--facing left` | not checked |
 
 Sanity: 3.0 m/s at 163 spm is a 1.10 m step, in the usual range for
 recreational running.
+
+**mediapipe 1.1.1 misses the hand count by 73 spm.** First, with 1.1.1 the
+tracker split the runner into 12 tracks (MediaPipe sometimes reports the
+runner twice in one frame, the copy a smaller partial pose, and the runner
+then moved onto the copy's track), so the run stopped with "only 12% of
+frames have the key joints visible". `track.build_tracks` now lets the
+longest track pick first, and the runner is one track again (250 of the 253
+frames with any detection). The cadence is still wrong: the near-foot heel
+strikes are found every ~22 frames as before (23, 44, 65, 90, 110, 132, 154,
+176, ... 287, i.e. ~163 spm), but 1.1.1 adds a spurious strike about 8
+frames before several of them (125, 147, 190, 234, 279). Those short
+intervals pull the median interval in the cadence estimate down to about 15
+frames, and the estimate reads 236.6 spm. The likely source is the far leg,
+hidden behind the foreground object, being mixed up with the near leg. The
+cadence method has not been changed to fix this.
 
 ### Three clips, three roles
 
 | clip | role | pipeline cadence | hand cadence | pipeline contact | hand contact |
 |---|---|---|---|---|---|
-| s003, treadmill 3.0 m/s | tuning (`vel_frac`, cadence method chosen here) | 162.9 spm | 163.4 spm | 0.200 s | ~0.27 s |
+| s003, treadmill 3.0 m/s | tuning (`vel_frac`, cadence method chosen here) | 236.6 spm with mediapipe 1.1.1 (162.9 spm with the earlier version) | 163.4 spm | 0.100 s (0.200 s earlier) | ~0.27 s |
 | s005, treadmill 9.0 m/s | development (it motivated runner selection) | 240.8 spm | ~232 spm (landings at frames 44 to 90.5, 6 steps) | 0.100 s | ~2-3 frames, ~0.1 s |
 | Arakawa river jog (Nesnad, CC BY 4.0), 1920x1080, 29.97 fps | held-out | **refused** (no person with periodic ankle motion) | ~185 spm (3 steps in frames 285-312, +-9 spm) | none | not measured |
 
@@ -168,7 +185,7 @@ How each was run and what went wrong:
 - **s005** first produced no result, because MediaPipe followed a
   bystander. With multi-person detection and runner selection (`track.py`)
   the pipeline picks the sprinter (hip near x=364 px) and reports 240.8 spm
-  against a hand count of about 232 spm: 9 spm (4%) high, outside the 2 spm
+  (also with mediapipe 1.1.1) against a hand count of about 232 spm: 9 spm (4%) high, outside the 2 spm
   target, though the hand count is only good to about +-5 spm. My first
   hand count for this clip (~210 spm) was wrong -- it used blurry coarse
   frames and a window that included the belt starting up -- and was redone
